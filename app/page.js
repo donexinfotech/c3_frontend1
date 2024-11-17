@@ -1,101 +1,157 @@
-import Image from "next/image";
+'use client'
+import { useState, useEffect } from "react";
+import Form from "./components/Form";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [prediction, setPrediction] = useState(null);
+  const [error, setError] = useState(null);
+  const [predictionDescription, setPredictionDescription] = useState('');
+  const [history, setHistory] = useState([]); // State for search history
+  const [hasSearchHistory, setHasSearchHistory] = useState(false); // State to track if history exists
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  // Load history from localStorage when the component mounts
+  useEffect(() => {
+    const savedHistory = JSON.parse(localStorage.getItem("searchHistory")) || [];
+    setHistory(savedHistory);
+    if (savedHistory.length > 0) {
+      setHasSearchHistory(true); // Set to true if there is search history
+    }
+  }, []);
+
+  const handleFormSubmit = async (url) => {
+    setPrediction(null);  // Reset prediction
+    setError(null);       // Reset error
+    setPredictionDescription(''); // Reset description
+
+    try {
+      // Clean the URL by removing "https://" only, while keeping "http://"
+      let cleanedUrl = url.replace(/^https:\/\//, "www");
+    
+      // Truncate the URL at ".com" if it exists
+      const comIndex = cleanedUrl.indexOf(".com");
+      if (comIndex !== -1) {
+        cleanedUrl = cleanedUrl.substring(0, comIndex + 4); // Keep ".com"
+      }
+    
+      const response = await fetch("http://localhost:8000/api/predict/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: cleanedUrl }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch prediction");
+      }
+
+      const data = await response.json();
+      setPrediction(data.prediction);
+
+      // Set the description based on the prediction
+      setPredictionDescription(getPredictionDescription(data.prediction));
+
+      // Update search history with the result and emoji
+      updateSearchHistory(url, data.prediction);
+
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const getPredictionDescription = (prediction) => {
+    switch (prediction) {
+      case 'benign':
+        return "This URL is safe to visit. It doesn't contain any malicious content.";
+      case 'defacement':
+        return "This URL has been altered to display unauthorized content, possibly a hacker's message.";
+      case 'phishing':
+        return "This URL is designed to trick you into providing sensitive information, such as passwords or credit card details.";
+      case 'malware':
+        return "This URL links to a site that could install malicious software on your device.";
+      default:
+        return "Unknown prediction. Please try again with a valid URL.";
+    }
+  };
+
+  const renderEmoji = (prediction) => {
+    switch (prediction) {
+      case 'benign':
+        return '✅'; // Green check mark for benign
+      case 'defacement':
+        return '💥'; // Explosion for defacement
+      case 'phishing':
+        return '🎣'; // Fishing hook for phishing
+      case 'malware':
+        return '💻'; // Computer with malware for malware
+      default:
+        return '❓'; // Question mark for unknown
+    }
+  };
+
+  const updateSearchHistory = (url, prediction) => {
+    // Get the current history from localStorage
+    const savedHistory = JSON.parse(localStorage.getItem("searchHistory")) || [];
+
+    // Add the new search URL and its prediction result to the beginning of the array
+    const updatedHistory = [{ url, prediction, emoji: renderEmoji(prediction) }, ...savedHistory];
+
+    // Keep only the top 3 searches
+    const limitedHistory = updatedHistory.slice(0, 3);
+
+    // Save the updated history to localStorage
+    localStorage.setItem("searchHistory", JSON.stringify(limitedHistory));
+
+    // Update state to reflect the changes
+    setHistory(limitedHistory);
+    setHasSearchHistory(true); // Ensure history is visible after the first search
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-blue-800 via-indigo-600 to-purple-700 text-black">
+      <h1 className="text-4xl font-bold mt-6 mb-6 text-black">URL Prediction WebApp</h1>
+      
+      <div className="mb-5 w-full max-w-md p-6 bg-white rounded-lg shadow-xl">
+        <h2 className="text-2xl font-semibold text-center mb-4 text-black">Enter a URL to get the prediction</h2>
+        <Form onSubmit={handleFormSubmit} />
+
+        {error && <p className="text-red-500 text-center mt-4 text-black">{error}</p>}
+
+        {prediction && (
+          <div className="mt-6 text-center">
+            <h3 className="text-xl font-medium mb-2 text-black">Prediction Result</h3>
+            <p className="text-3xl text-black">{renderEmoji(prediction)} {prediction}</p>
+            <p className="mt-4 text-black text-lg">{predictionDescription}</p>
+          </div>
+        )}
+
+        {/* Display search history only after the first search */}
+        {hasSearchHistory && (
+          <div className="mt-6 text-center w-full">
+            <h3 className="text-xl font-medium mb-2 text-black">Recent Searches</h3>
+            {history.length > 0 ? (
+              <table className="w-full border-collapse border border-gray-300 table-auto">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-300 px-4 py-2">URL</th>
+                    <th className="border border-gray-300 px-4 py-2">Prediction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((entry, index) => (
+                    <tr key={index} className="break-words">
+                      <td className="border border-gray-300 px-4 py-2 break-words">{entry.url}</td>
+                      <td className="border border-gray-300 px-4 py-2">{entry.prediction} {entry.emoji}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-gray-500">No recent searches</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
